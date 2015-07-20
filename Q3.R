@@ -1,72 +1,68 @@
-# load data 
-myData <- read.csv("OnlineNewsPopularity/OnlineNewsPopularity.csv")
+library(XML)
+library(httr)
 
-# process data
-for(i in 1:nrow(myData)) {
-    if(myData$data_channel_is_lifestyle[i]==1) {
-        myData$topic[i] = "life"}
-    else if (myData$data_channel_is_entertainment[i]==1) {
-        myData$topic[i] = "entertainment"}
-    else if (myData$data_channel_is_bus[i]==1) {
-        myData$topic[i] = "business"}
-    else if (myData$data_channel_is_socmed[i]==1) {
-        myData$topic[i] = "socialMedia"}
-    else if (myData$data_channel_is_tech[i]==1){
-        myData$topic[i] = "tech"}
-    else if (myData$data_channel_is_world[i]==1){
-        myData$topic[i] = "world"}
-    else {
-        myData$topic[i] = "other"}
-    }
-myData$topic <- as.factor(myData$topic)
+URL <- c() ; section <- c() ; type <- c() ; title <- c() ; views <- c() 
+date <- c() ; abstract <- c()
+popular_key <- "734fdd9fa228e00cde663510863df748:5:72533305"
 
-for(i in 1:nrow(myData)) {
-    if (myData$weekday_is_monday[i]==1){
-        myData$day[i] = "Monday"
-    }
-    else if (myData$weekday_is_tuesday[i]==1){
-        myData$day[i] = "Tuesday"
-    }
-    else if (myData$weekday_is_wednesday[i]==1){
-        myData$day[i] = "Wednesday"
-    }
-    else if (myData$weekday_is_thursday[i]==1){
-        myData$day[i] = "Thursday"
-    }
-    else if (myData$weekday_is_friday[i]==1){
-        myData$day[i] = "Friday"
-    }
-    else if (myData$weekday_is_saturday[i]==1){
-        myData$day[i] = "Saturday"
-    }
-    else{
-        myData$day[i] = "Sunday"
-    }
+url <- "http://api.nytimes.com/svc/mostpopular/v2/mostviewed/all-sections/30.xml?"
+mostViewed <- xmlParse(paste0(url,"&api-key=",popular_key))
+count <- as.integer(as.numeric(unlist(xpathApply(mostViewed,"//num_results",xmlValue))[1])/20)
+
+url <- "http://api.nytimes.com/svc/mostpopular/v2/mostviewed/all-sections/30.xml?offset="
+for(i in 0:(count-1)){
+offset <- i*20
+mostViewed <- xmlParse(paste0(url,offset,"&api-key=",popular_key))
+
+temp <- unlist(xpathApply(mostViewed,"//result/url",xmlValue))
+URL <- c(URL,temp)
+
+temp <- unlist(xpathApply(mostViewed,"//result/section",xmlValue))
+section <- c(section,temp)
+
+temp <- unlist(xpathApply(mostViewed,"//result/type",xmlValue))
+type <- c(type,temp)
+
+temp <- unlist(xpathApply(mostViewed,"//result/title",xmlValue))
+title <- c(title,temp)
+
+temp <- unlist(xpathApply(mostViewed,"//result/published_date",xmlValue))
+date <- c(date,temp)
+
+temp <- unlist(xpathApply(mostViewed,"//result/abstract",xmlValue))
+abstract <- c(abstract,temp)
+rm(mostViewed)
 }
-myData$day <- as.factor(myData$day)
-myData$day <- factor(myData$day,levels=c("Monday","Tuesday","Wednesday",
+
+popular <- data.frame(URL,section,type,title,date,abstract,views)
+popular$weekday <- as.factor(weekdays(as.Date(as.character(popular$date),"%Y-%m-%d")))
+popular$title <- as.character(popular$title)
+popular$abstract <- as.character(popular$abstract)
+popular$weekday <- factor(popular$weekday,levels=c("Monday","Tuesday","Wednesday",
                                          "Thursday","Friday","Saturday",
-                                         "Sunday"))   
+                                         "Sunday"))
+popular$rank <- c(1:dim(popular[1]))
 
-# plot1
-## shows how shares changes belong to different topics and published on 
-## different days
-library(ggplot2)    
-qplot(x=day,y=shares,data=myData,color=topic,main="Shares of Different Topic
-      on Day Scale")
-dev.copy(png,'plot1.png')
+p <- ggplot(popular, aes(weekday, rank,color=type))
+p <- p + geom_boxplot() + geom_jitter() + facet_grid(. ~ type)
+p
+# for article, days of the week doesn't make much sense, but it seems there's some 
+# difference posting blog and interactive in different weekdays
+dev.copy(png,'plot1.1.png')
 dev.off()
 
-# plot2
-
-qplot(rate_negative_words,rate_positive_words,data=myData)
-## accroding to this one, we know they didn't consider neutral word 
-## the impact of negative words rate is the opposite of the positive words rate
-## we only need to consider one
-qplot(n_tokens_content,rate_positive_words,data=myData)
-qplot(n_tokens_content,shares,data=myData)
-qplot(rate_positive_words,shares,data=myData,main="How Positive Words Rate 
-      Impact the Share of the Link")
-dev.copy(png,'plot2.png')
+txt <- paste(popular$title,collapse=" ")
+library("RWeka")
+library("tm")
+ar <- NGramTokenizer(txt,Weka_control(min = 2, max = 2))
+br <- WordTokenizer(txt)
+tbr <- data.frame(table(br))
+tbr <- tbr[order(tbr$Freq,decreasing=TRUE),]
+tbr <- subset(tbr,!br %in% c("a","A","in","In","of","For","for","the","The",
+                             "is","Is","to","and","on","at","as","by","s",
+                             "With","Are","After"))
+top10 <- tbr[1:10,]
+qplot(x=br,y=Freq,data=top10,color="words",xlab="word",ylab="Frequency",
+      main="Most Frenquent words in popular title")
+dev.copy(png,'plot2.1.png')
 dev.off()
-
