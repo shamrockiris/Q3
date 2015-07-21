@@ -3,7 +3,7 @@ library(httr)
 
 URL <- c() ; section <- c() ; type <- c() ; title <- c() ; views <- c() 
 date <- c() ; abstract <- c()
-popular_key <- "734fdd9fa228e00cde663510863df748:5:72533305"
+popular_key <- "xxxxx"
 
 url <- "http://api.nytimes.com/svc/mostpopular/v2/mostviewed/all-sections/30.xml?"
 mostViewed <- xmlParse(paste0(url,"&api-key=",popular_key))
